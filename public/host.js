@@ -36,7 +36,10 @@ function start3D(r){overlay.classList.add('hidden');hud.classList.remove('hidden
   const head=BABYLON.MeshBuilder.CreateSphere('driver'+i,{diameter:.9},scene);head.parent=body;head.position.set(0,1.35,.1);head.material=mat('head'+i,'#ffe3ad');
   for(const side of [-1,1])for(const z of [-1,1]){const wheel=BABYLON.MeshBuilder.CreateCylinder('wheel',{height:.42,diameter:.9,tessellation:12},scene);wheel.parent=body;wheel.position.set(side*1.05,-.18,z*1.05);wheel.rotation.z=Math.PI/2;wheel.material=mat('tire'+i+side+z,'#1c2232');}
   body.position.set(35+angle*0,1,angle*23);body.rotation.y=0;
-  const camera=new BABYLON.FreeCamera('camera'+i,new BABYLON.Vector3(0,8,-13),scene);camera.minZ=.1;camera.fov=.95;
+  const camera=new BABYLON.FreeCamera('camera'+i,new BABYLON.Vector3(35,8,angle*23-11),scene);camera.minZ=.1;camera.fov=.95;
+  // Initialize behind this kart, not at world origin (prevents an initial camera fly-through).
+  const initialTarget=body.position.add(new BABYLON.Vector3(0,2,8));
+  camera.setTarget(initialTarget);
   const viewports=count===1?[[0,0,1,1]]:count===2?[[0,.5,1,.5],[0,0,1,.5]]:count===3?[[0,.5,.5,.5],[.5,.5,.5,.5],[0,0,1,.5]]:[[0,.5,.5,.5],[.5,.5,.5,.5],[0,0,.5,.5],[.5,0,.5,.5]];
   const v=viewports[i];camera.viewport=new BABYLON.Viewport(...v);
   karts.set(p.id,{id:p.id,body,camera,index:i,input:{steer:0,accelerate:false,brake:false,drift:false},speed:0,yaw:0,progress:0,prevAngle:angle,totalAngle:0,boostUntil:0,shieldUntil:0,finished:false,orbCooldown:new Map()});
@@ -75,7 +78,11 @@ function updateRace(dt){if(!room||!engine)return;const now=Date.now();const acti
  }
  for(const k of karts.values()){
   const forward=new BABYLON.Vector3(Math.sin(k.yaw),0,Math.cos(k.yaw));const target=k.body.position.add(new BABYLON.Vector3(0,2,0));const desired=target.subtract(forward.scale(11)).add(new BABYLON.Vector3(0,6,0));
-  k.camera.position=BABYLON.Vector3.Lerp(k.camera.position,desired,Math.min(1,dt*7));k.camera.setTarget(target.add(forward.scale(8)));
+  // Each viewport owns a dedicated follow camera. Smooth its position but always aim at its kart.
+  // Exponential smoothing is stable across different frame rates.
+  const followAlpha=1-Math.exp(-12*dt);
+  k.camera.position.copyFrom(BABYLON.Vector3.Lerp(k.camera.position,desired,followAlpha));
+  k.camera.setTarget(target.add(forward.scale(5)));
  }
  for(const o of orbs){o.orb.rotation.y+=dt*1.4;o.glow.rotation.y+=dt;o.orb.position.y=1.7+Math.sin(now/350+o.index)*.35;o.glow.position.y=o.orb.position.y;}
  progressTimer+=dt;if(progressTimer>.15&&active){progressTimer=0;socket.emit('host:progress',{players:[...karts.values()].map(k=>({id:k.id,progress:k.progress}))});}
